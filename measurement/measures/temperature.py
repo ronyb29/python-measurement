@@ -1,20 +1,21 @@
-from sympy import S, Symbol
 from decimal import Decimal
 
-from measurement.base import MeasureBase
-
+from measurement.base import MeasureBase, SimpleTransform as ST
 
 __all__ = [
     'Temperature'
 ]
 
+D = Decimal
+
 
 class Temperature(MeasureBase):
-    SU = Symbol('kelvin')
     STANDARD_UNIT = 'k'
     UNITS = {
-        'c': SU - S(273.15),
-        'f': (SU - S(273.15)) * S('9/5') + 32,
+        'c': ST(to=lambda c: c + D('273.15'),
+                fro=lambda k: k - D('273.15')),
+        'f': ST(to=lambda f: (f + D('459.67')) * D(5) / D(9),
+                fro=lambda k: (k - D('273.15')) * D('1.8') + 32),
         'k': Decimal('1.0')
     }
     ALIAS = {

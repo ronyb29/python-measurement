@@ -26,14 +26,12 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
+from abc import ABCMeta, abstractmethod
 from decimal import Decimal, Inexact, Context
 
 import six
-import sympy
-from sympy.solvers import solve_linear
 
 from measurement.utils import total_ordering
-
 
 NUMERIC_TYPES = six.integer_types + (float, Decimal)
 
@@ -45,6 +43,7 @@ def pretty_name(obj):
 class classproperty(property):
     def __get__(self, cls, owner):
         return self.fget.__get__(None, owner)()
+
 
 def float_to_decimal(f):
     """Convert a floating point number to a Decimal with no loss of information
@@ -59,6 +58,31 @@ def float_to_decimal(f):
         ctx.prec *= 2
         result = ctx.divide(numerator, denominator)
     return result
+
+
+class TransformationBase(metaclass=ABCMeta):
+    @abstractmethod
+    def from_su(self, val):
+        pass
+
+    @abstractmethod
+    def to_su(self, val):
+        pass
+
+
+class SimpleTransform(TransformationBase):
+    def __init__(self, to, fro):
+        assert six.callable(fro)
+        assert six.callable(to)
+        self.from_func = fro
+        self.to_func = to
+
+    def to_su(self, val):
+        return self.to_func(val)
+
+    def from_su(self, val):
+        return self.from_func(val)
+
 
 @total_ordering
 class MeasureBase(object):
@@ -325,7 +349,7 @@ class MeasureBase(object):
                 }
             )
 
-    def __div__(self, other):   # Python 2 compatibility
+    def __div__(self, other):  # Python 2 compatibility
         return type(self).__truediv__(self, Decimal(other))
 
     def __itruediv__(self, other):
@@ -345,29 +369,22 @@ class MeasureBase(object):
     def __bool__(self):
         return bool(self.standard)
 
-    def __nonzero__(self):      # Python 2 compatibility
+    def __nonzero__(self):  # Python 2 compatibility
         return type(self).__bool__(self)
 
     def _convert_value_to(self, unit, value):
         if not isinstance(value, Decimal):
-            if isinstance(value, sympy.Float):
-                value = Decimal(str(value))
-            else:
-                value = Decimal(value)
+            value = Decimal(value)
 
-        if isinstance(unit, sympy.Expr):
-            result = unit.evalf(
-                subs={
-                    self.SU: sympy.Float(str(value))
-                }
-            )
-            return Decimal(str(result))
+        if isinstance(unit, TransformationBase):
+            return Decimal(unit.from_su(value))
+
         return Decimal(value) / Decimal(unit)
 
     def _convert_value_from(self, unit, value):
-        if isinstance(unit, sympy.Expr):
-            _, result = solve_linear(unit, sympy.Float(str(value)))
-            return Decimal(str(result))
+        if isinstance(unit, TransformationBase):
+            return Decimal(unit.to_su(value))
+
         return Decimal(unit) * Decimal(value)
 
     def default_units(self, kwargs):
@@ -507,7 +524,7 @@ class BidimensionalMeasure(object):
         reference_units = self.REFERENCE_DIMENSION.get_units()
         if reference != self.reference.unit:
             reference_chg = (
-                Decimal(reference_units[self.reference.unit])/Decimal(reference_units[reference])
+                Decimal(reference_units[self.reference.unit]) / Decimal(reference_units[reference])
             )
             self.primary.standard = self.primary.standard / reference_chg
         self.primary.unit = primary
@@ -528,8 +545,8 @@ class BidimensionalMeasure(object):
         p1, r1 = self.primary.unit, self.reference.unit
         p2, r2 = self._get_unit_parts(measure_string)
 
-        primary_chg = Decimal(primary_units[p2])/Decimal(primary_units[p1])
-        reference_chg = Decimal(reference_units[r2])/Decimal(reference_units[r1])
+        primary_chg = Decimal(primary_units[p2]) / Decimal(primary_units[p1])
+        reference_chg = Decimal(reference_units[r2]) / Decimal(reference_units[r1])
 
         return self.primary.value / primary_chg * reference_chg
 
@@ -686,7 +703,7 @@ class BidimensionalMeasure(object):
                 }
             )
 
-    def __div__(self, other):   # Python 2 compatibility
+    def __div__(self, other):  # Python 2 compatibility
         return type(self).__truediv__(self, other)
 
     def __idiv__(self, other):  # Python 2 compatibility
@@ -697,4 +714,3 @@ class BidimensionalMeasure(object):
 
     def __nonzero__(self):  # Python 2 compatibility
         return type(self).__bool__(self)
-
