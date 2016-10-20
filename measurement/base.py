@@ -33,6 +33,16 @@ import six
 
 from measurement.utils import total_ordering
 
+try:
+    import sympy
+    from sympy.solvers import solve_linear
+except ImportError:
+    sympy = None
+
+
+    def solve_linear(unit, val):
+        raise NotImplementedError()
+
 NUMERIC_TYPES = six.integer_types + (float, Decimal)
 
 
@@ -374,16 +384,27 @@ class MeasureBase(object):
 
     def _convert_value_to(self, unit, value):
         if not isinstance(value, Decimal):
-            value = Decimal(value)
+            if sympy and isinstance(value, sympy.Float):
+                value = Decimal(str(value))
+            else:
+                value = Decimal(value)
 
         if isinstance(unit, TransformationBase):
             return Decimal(unit.from_su(value))
+        elif sympy and isinstance(unit, sympy.Expr):
+            result = unit.evalf(subs={
+                self.SU: sympy.Float(str(value))
+            })
+            return Decimal(str(result))
 
         return Decimal(value) / Decimal(unit)
 
     def _convert_value_from(self, unit, value):
         if isinstance(unit, TransformationBase):
             return Decimal(unit.to_su(value))
+        elif sympy and isinstance(unit, sympy.Expr):
+            _, result = solve_linear(unit, sympy.Float(str(value)))
+            return result
 
         return Decimal(unit) * Decimal(value)
 
